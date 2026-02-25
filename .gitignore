@@ -1,0 +1,29 @@
+# Node dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# UI dependencies and build output
+ui/node_modules/
+ui/dist/
+ui/coverage/
+ui/*.tsbuildinfo
+
+# SQLite runtime files
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Local environment files
+.env
+.env.*
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS/editor noise
+.DS_Store
