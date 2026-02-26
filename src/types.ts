@@ -31,6 +31,10 @@ export type MonitorConfig = {
   port: number;
   dbPath: string;
   apiKey: string;
+  authEnabled: boolean;
+  authSecret: string;
+  authAdminEmail: string;
+  authAdminPassword: string;
   retentionDays: number;
   evaluatorIntervalSeconds: number;
   retentionIntervalSeconds: number;

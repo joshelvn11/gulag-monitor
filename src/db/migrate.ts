@@ -9,9 +9,17 @@ export function runMigrations(dbPath: string): void {
   const { sqlite } = createDbClient(dbPath);
   const thisFile = fileURLToPath(import.meta.url);
   const root = path.resolve(path.dirname(thisFile), "../../");
-  const migrationPath = path.join(root, "drizzle", "0000_init.sql");
-  const sql = fs.readFileSync(migrationPath, "utf-8");
-  sqlite.exec(sql);
+  const migrationDir = path.join(root, "drizzle");
+  const migrationFiles = fs
+    .readdirSync(migrationDir)
+    .filter((name) => name.endsWith(".sql"))
+    .sort((a, b) => a.localeCompare(b));
+
+  for (const fileName of migrationFiles) {
+    const migrationPath = path.join(migrationDir, fileName);
+    const sql = fs.readFileSync(migrationPath, "utf-8");
+    sqlite.exec(sql);
+  }
   sqlite.close();
 }
 

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import express, { NextFunction, Request, Response } from "express";
 import { z } from "zod";
 
+import { createMonitorAuth } from "./auth/index.js";
 import { loadConfig } from "./config.js";
 import { createDbClient } from "./db/client.js";
 import { runMigrations } from "./db/migrate.js";
@@ -47,15 +48,21 @@ function coercePositiveInt(raw: unknown, fallback: number, max: number): number 
 
 function authenticate(req: Request, configuredApiKey: string): boolean {
   if (!configuredApiKey) {
-    return true;
+    return false;
   }
   const header = req.header("x-api-key") ?? "";
   return header === configuredApiKey;
 }
 
-function requiresApiKey(req: Request): boolean {
-  // Keep health open for infra probes and liveness checks.
-  return req.path !== "/health";
+function isHealthRoute(req: Request): boolean {
+  return req.path === "/health";
+}
+
+function isTelemetryIngestRoute(req: Request): boolean {
+  if (req.method !== "POST") {
+    return false;
+  }
+  return req.path === "/events" || req.path === "/events/batch";
 }
 
 function resolveUiDistPath(): string {
@@ -74,24 +81,59 @@ function resolveUiDistPath(): string {
   return candidates[0];
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const config = loadConfig();
   runMigrations(config.dbPath);
 
   const { db, sqlite } = createDbClient(config.dbPath);
   const service = new MonitorService(db, config);
+  const auth = createMonitorAuth(sqlite, config);
 
   const app = express();
+
+  if (auth) {
+    auth.mountAuthRoutes(app);
+    await auth.ensureSeedAdmin();
+  }
+
   app.use(express.json({ limit: "2mb" }));
 
-  app.use("/v1", (req: Request, res: Response, next: NextFunction) => {
-    if (!requiresApiKey(req)) {
-      return next();
-    }
-    if (!authenticate(req, config.apiKey)) {
+  app.use("/v1", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (isHealthRoute(req)) {
+        return next();
+      }
+
+      const apiKeyIsConfigured = Boolean(config.apiKey);
+      const hasValidApiKey = authenticate(req, config.apiKey);
+
+      if (isTelemetryIngestRoute(req)) {
+        if (!apiKeyIsConfigured || hasValidApiKey) {
+          return next();
+        }
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      if (hasValidApiKey) {
+        return next();
+      }
+
+      if (auth) {
+        const session = await auth.getSessionFromRequest(req);
+        if (session) {
+          return next();
+        }
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      if (!apiKeyIsConfigured) {
+        return next();
+      }
+
       return res.status(401).json({ error: "Unauthorized" });
+    } catch (error) {
+      return next(error);
     }
-    return next();
   });
 
   app.get("/v1/health", (_req: Request, res: Response) => {
@@ -199,7 +241,7 @@ function main(): void {
     app.use(express.static(uiDistPath));
 
     app.get("*", (req: Request, res: Response, next: NextFunction) => {
-      if (req.path.startsWith("/v1")) {
+      if (req.path.startsWith("/v1") || req.path.startsWith("/api/auth")) {
         return next();
       }
       return res.sendFile(uiIndexPath);
@@ -232,4 +274,8 @@ function main(): void {
   process.on("SIGTERM", shutdown);
 }
 
-main();
+main().catch((error: unknown) => {
+  // eslint-disable-next-line no-console
+  console.error("Failed to start chief-monitor", error);
+  process.exit(1);
+});

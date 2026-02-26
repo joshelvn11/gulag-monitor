@@ -53,8 +53,9 @@ flowchart TD
   C --> D["SQLite telemetry_events"]
   D --> E["Check/Alert state updates"]
   E --> F["check_states + alerts tables"]
+  I["Better Auth (/api/auth/*)"] --> H["UI pages (/login, /, /jobs, /alerts, /events)"]
   F --> G["Status APIs (/v1/status/*)"]
-  F --> H["UI pages (/ , /jobs, /alerts, /events)"]
+  H --> G
 ```
 
 ## 4. Runtime Entry Point and Boot Sequence
@@ -66,11 +67,12 @@ Boot order:
 1. `loadConfig()` from env
 2. `runMigrations(config.dbPath)` executes SQL bootstrap
 3. `createDbClient(config.dbPath)` opens SQLite and enables pragmas
-4. Construct `MonitorService(db, config)`
-5. Register API routes
-6. Register static UI serving if `ui/dist/index.html` exists
-7. Start background loops from `service.startBackgroundLoops()`
-8. Bind Express server
+4. Construct Better Auth module and seed admin user (when auth enabled)
+5. Construct `MonitorService(db, config)`
+6. Register auth and API routes
+7. Register static UI serving if `ui/dist/index.html` exists
+8. Start background loops from `service.startBackgroundLoops()`
+9. Bind Express server
 
 Shutdown behavior:
 
@@ -89,17 +91,22 @@ Environment variables:
 - `MONITOR_PORT` (default `7410`)
 - `MONITOR_DB_PATH` (default `./monitor.sqlite`)
 - `MONITOR_API_KEY` (default empty)
+- `MONITOR_AUTH_ENABLED` (default `true`)
+- `MONITOR_AUTH_SECRET` (required when auth enabled)
+- `MONITOR_AUTH_ADMIN_EMAIL` (required when auth enabled)
+- `MONITOR_AUTH_ADMIN_PASSWORD` (required when auth enabled)
 - `MONITOR_RETENTION_DAYS` (default `30`)
 - `MONITOR_EVALUATOR_INTERVAL_SECONDS` (default `15`)
 - `MONITOR_RETENTION_INTERVAL_SECONDS` (default `3600`)
 
 Integer parser accepts only positive ints, otherwise falls back to defaults.
+When `MONITOR_AUTH_ENABLED=true`, startup fails fast if required auth env vars are missing.
 
 ## 6. Database Layer
 
 Schema sources:
 
-- SQL bootstrap: `monitor/drizzle/0000_init.sql`
+- SQL bootstrap: `monitor/drizzle/0000_init.sql`, `monitor/drizzle/0001_auth.sql`
 - Drizzle schema: `monitor/src/db/schema.ts`
 
 Client creation: `monitor/src/db/client.ts`
@@ -135,6 +142,10 @@ Client creation: `monitor/src/db/client.ts`
 
 - reserved for persisted runtime overrides
 
+`user`, `session`, `account`, `verification`
+
+- Better Auth identity/session tables used by web login
+
 ### 6.2 Indexing
 
 Important indexes:
@@ -159,6 +170,7 @@ Validation uses Zod schemas in `monitor/src/server.ts`.
 Auth:
 
 - If `MONITOR_API_KEY` is set, these endpoints require `x-api-key`.
+- If `MONITOR_API_KEY` is empty, these endpoints remain open.
 
 ### 7.2 Read/Status Endpoints
 
@@ -172,7 +184,9 @@ Auth:
 Auth rule:
 
 - `/v1/health` is unauthenticated.
-- all other `/v1/*` endpoints require `x-api-key` when `MONITOR_API_KEY` is configured.
+- non-ingest `/v1/*` endpoints allow either:
+  - valid Better Auth session cookie, or
+  - valid `x-api-key`
 
 ### 7.3 Alert Mutation Endpoint
 
@@ -402,11 +416,10 @@ API client source: `monitor/ui/src/lib/api.ts`
 - `getAlerts`, `getEvents`
 - `closeAlert`
 
-Header behavior:
+Session behavior:
 
-- adds `x-api-key` automatically when one is available from:
-  - `VITE_MONITOR_API_KEY` (build-time env), or
-  - `localStorage["monitor_api_key"]` (runtime)
+- browser UI authenticates via Better Auth cookie session (`/api/auth/*`)
+- UI API requests use same-origin credentials (no browser-stored monitor API key)
 
 ## 16. Integrated Serving Model
 
@@ -419,7 +432,7 @@ Server resolves UI dist path candidates:
 If `ui/dist/index.html` exists:
 
 - serves static assets
-- SPA fallback for non-`/v1` routes
+- SPA fallback for non-`/v1` and non-`/api/auth` routes
 
 If missing:
 
@@ -452,7 +465,9 @@ Note:
 
 Current security boundaries:
 
-- all `/v1/*` except `/v1/health` are protected when `MONITOR_API_KEY` is set
+- Better Auth protects browser UI/API access with user sessions
+- telemetry ingest (`/v1/events*`) can remain machine-key based via `MONITOR_API_KEY`
+- non-ingest `/v1` endpoints accept session cookie or API key
 
 Implications:
 

@@ -39,8 +39,13 @@ npm run db:migrate
 3. Start monitor
 
 ```bash
+MONITOR_AUTH_SECRET=replace-me \
+MONITOR_AUTH_ADMIN_EMAIL=admin@example.com \
+MONITOR_AUTH_ADMIN_PASSWORD=change-me-please \
 npm run dev
 ```
+
+For API-only local debugging without web login, you can set `MONITOR_AUTH_ENABLED=false`.
 
 4. Open:
 
@@ -55,6 +60,7 @@ gulag-chief run --config chief/chief.yaml
 
 ## 4. Monitor UI Pages
 
+- `/login` Login page for Better Auth session
 - `/` System Overview: high-level health, alert totals, Chief runtime status
 - `/jobs`: health state for each monitored job
 - `/jobs/:jobName`: check state, open alerts, and recent events for one job
@@ -83,6 +89,7 @@ UI dev server:
 - `http://127.0.0.1:5173`
 
 It proxies `/v1` to the monitor API at `http://127.0.0.1:7410`.
+It also proxies `/api/auth` to the monitor API for Better Auth login/session routes.
 
 ## 6. Production Build + Run
 
@@ -105,6 +112,20 @@ Build and run with Docker Compose:
 
 ```bash
 cd monitor
+docker compose up --build -d
+```
+
+Defaults in `docker-compose.yml` create:
+
+- Better Auth enabled
+- seeded admin `admin@example.com` / `change-me-please`
+
+Override these for real use:
+
+```bash
+MONITOR_AUTH_SECRET=replace-me \
+MONITOR_AUTH_ADMIN_EMAIL=admin@example.com \
+MONITOR_AUTH_ADMIN_PASSWORD=change-me-please \
 docker compose up --build -d
 ```
 
@@ -137,7 +158,7 @@ cd monitor
 MONITOR_IMAGE=ghcr.io/<owner>/chief-monitor:latest docker compose up -d
 ```
 
-If using API auth:
+If using API key auth for machine ingest:
 
 ```bash
 MONITOR_API_KEY=my-secret MONITOR_IMAGE=ghcr.io/<owner>/chief-monitor:latest docker compose up -d
@@ -217,6 +238,10 @@ export CHIEF_MONITOR_ENDPOINT=http://127.0.0.1:7410
 - `MONITOR_PORT` (default `7410`)
 - `MONITOR_DB_PATH` (default `./monitor.sqlite`)
 - `MONITOR_API_KEY` (optional)
+- `MONITOR_AUTH_ENABLED` (default `true`)
+- `MONITOR_AUTH_SECRET` (required when auth enabled)
+- `MONITOR_AUTH_ADMIN_EMAIL` (required when auth enabled)
+- `MONITOR_AUTH_ADMIN_PASSWORD` (required when auth enabled)
 - `MONITOR_RETENTION_DAYS` (default `30`)
 - `MONITOR_EVALUATOR_INTERVAL_SECONDS` (default `15`)
 - `MONITOR_RETENTION_INTERVAL_SECONDS` (default `3600`)
@@ -224,20 +249,61 @@ export CHIEF_MONITOR_ENDPOINT=http://127.0.0.1:7410
 Example:
 
 ```bash
-MONITOR_API_KEY=my-secret MONITOR_PORT=7410 npm run dev
+MONITOR_AUTH_SECRET=replace-me \
+MONITOR_AUTH_ADMIN_EMAIL=admin@example.com \
+MONITOR_AUTH_ADMIN_PASSWORD=change-me-please \
+MONITOR_API_KEY=my-secret \
+MONITOR_PORT=7410 npm run dev
 ```
 
-## 10. API Key Behavior
+`MONITOR_AUTH_SECRET` guidance:
 
-When `MONITOR_API_KEY` is set:
+- use a cryptographically random secret (minimum 32 bytes)
+- keep it server-side only (never in browser code)
+- keep it stable between restarts, or existing sessions will be invalidated
 
-- `/v1/health` remains open
-- all other `/v1/*` routes require `x-api-key`
+Generate a secret (OpenSSL):
 
-If auth is enabled, configure the UI API key using either:
+```bash
+openssl rand -base64 32
+```
 
-- build-time: `VITE_MONITOR_API_KEY` in `monitor/ui/.env`
-- runtime in browser: `localStorage.setItem("monitor_api_key", "YOUR_KEY")`
+Generate a secret (Node.js):
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+`MONITOR_API_KEY` generation:
+
+```bash
+openssl rand -base64 32
+```
+
+Use the same generation method, but do not reuse the same value as `MONITOR_AUTH_SECRET`.
+
+## 10. Authentication Behavior
+
+Better Auth routes are mounted at:
+
+- `/api/auth/*`
+
+When `MONITOR_AUTH_ENABLED=true`:
+
+- browser login uses Better Auth session cookies
+- the first UI user is seeded from:
+  - `MONITOR_AUTH_ADMIN_EMAIL`
+  - `MONITOR_AUTH_ADMIN_PASSWORD`
+
+`/v1` authorization matrix:
+
+- `/v1/health` stays open
+- `POST /v1/events` and `POST /v1/events/batch`:
+  - require `x-api-key` when `MONITOR_API_KEY` is set
+  - remain open when `MONITOR_API_KEY` is empty
+- all other `/v1/*` endpoints:
+  - allow valid Better Auth session cookie, or
+  - allow valid `x-api-key` (for backward compatibility)
 
 ## 11. API Quick Reference
 

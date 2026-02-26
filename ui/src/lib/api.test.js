@@ -4,7 +4,7 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 beforeEach(() => {
-    localStorage.clear();
+    vi.restoreAllMocks();
 });
 describe("buildQueryString", () => {
     it("includes only defined non-empty params", () => {
@@ -36,14 +36,14 @@ describe("buildQueryString", () => {
         await closeAlert(12);
         expect(fetchMock).toHaveBeenCalledWith("/v1/alerts/12/close", expect.objectContaining({
             method: "POST",
+            credentials: "same-origin",
             headers: expect.objectContaining({
                 Accept: "application/json",
                 "Content-Type": "application/json",
             }),
         }));
     });
-    it("adds x-api-key header when configured in localStorage", async () => {
-        localStorage.setItem("monitor_api_key", "local-test-key");
+    it("sends same-origin credentials for session auth", async () => {
         const fetchMock = vi.fn(async () => ({
             ok: true,
             json: async () => ({ ok: true }),
@@ -51,9 +51,9 @@ describe("buildQueryString", () => {
         vi.stubGlobal("fetch", fetchMock);
         await fetchJson("/v1/status/summary");
         expect(fetchMock).toHaveBeenCalledWith("/v1/status/summary", expect.objectContaining({
+            credentials: "same-origin",
             headers: expect.objectContaining({
                 Accept: "application/json",
-                "x-api-key": "local-test-key",
             }),
         }));
     });

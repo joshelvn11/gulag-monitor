@@ -20,6 +20,9 @@ Start monitor:
 cd monitor
 npm install
 npm run db:migrate
+MONITOR_AUTH_SECRET=replace-me \
+MONITOR_AUTH_ADMIN_EMAIL=admin@example.com \
+MONITOR_AUTH_ADMIN_PASSWORD=change-me-please \
 npm run dev
 ```
 
@@ -31,10 +34,36 @@ curl -s http://127.0.0.1:7410/v1/health
 
 ## 2. Authentication
 
-Authentication is controlled by `MONITOR_API_KEY`.
+Monitor uses hybrid auth:
 
-- If `MONITOR_API_KEY` is empty: all `/v1/*` endpoints are open.
-- If `MONITOR_API_KEY` is set: all `/v1/*` endpoints require header `x-api-key`, except `GET /v1/health`.
+- Better Auth session cookies for browser UI login (`/api/auth/*`)
+- `x-api-key` for machine telemetry and compatibility access
+
+`/v1` rules:
+
+- `GET /v1/health` is always open.
+- `POST /v1/events` and `POST /v1/events/batch`:
+  - require `x-api-key` when `MONITOR_API_KEY` is set
+  - remain open when `MONITOR_API_KEY` is empty
+- all other `/v1/*` endpoints:
+  - allow a valid Better Auth session cookie, or
+  - allow a valid `x-api-key`
+
+For Better Auth setup, generate and set `MONITOR_AUTH_SECRET`:
+
+```bash
+openssl rand -base64 32
+```
+
+Set it in monitor server environment and keep it stable across restarts.
+
+For machine ingest auth, you can generate `MONITOR_API_KEY` the same way:
+
+```bash
+openssl rand -base64 32
+```
+
+Use a different value than `MONITOR_AUTH_SECRET`.
 
 Example:
 
@@ -109,7 +138,7 @@ Purpose:
 
 Auth:
 
-- required if `MONITOR_API_KEY` is configured
+- requires `x-api-key` when `MONITOR_API_KEY` is configured
 
 Body schema:
 
@@ -189,7 +218,7 @@ Purpose:
 
 Auth:
 
-- required if `MONITOR_API_KEY` is configured
+- requires `x-api-key` when `MONITOR_API_KEY` is configured
 
 Accepted body forms:
 
@@ -275,7 +304,7 @@ Purpose:
 
 Auth:
 
-- required if `MONITOR_API_KEY` is configured
+- requires Better Auth session cookie or valid `x-api-key`
 
 Response `200` example:
 
@@ -313,7 +342,7 @@ Purpose:
 
 Auth:
 
-- required if `MONITOR_API_KEY` is configured
+- requires Better Auth session cookie or valid `x-api-key`
 
 Response `200` example:
 
@@ -353,7 +382,7 @@ Purpose:
 
 Auth:
 
-- required if `MONITOR_API_KEY` is configured
+- requires Better Auth session cookie or valid `x-api-key`
 
 Path params:
 
@@ -420,7 +449,7 @@ Purpose:
 
 Auth:
 
-- required if `MONITOR_API_KEY` is configured
+- requires Better Auth session cookie or valid `x-api-key`
 
 Query params:
 
@@ -474,7 +503,7 @@ Purpose:
 
 Auth:
 
-- required if `MONITOR_API_KEY` is configured
+- requires Better Auth session cookie or valid `x-api-key`
 
 Query params:
 
@@ -533,7 +562,7 @@ Purpose:
 
 Auth:
 
-- required if `MONITOR_API_KEY` is configured
+- requires Better Auth session cookie or valid `x-api-key`
 
 Path params:
 
@@ -707,8 +736,8 @@ console.log(summary);
 ## 8. Error Handling Checklist
 
 - `401 Unauthorized`
-  - missing/wrong `x-api-key`
-  - check `MONITOR_API_KEY` on service side
+  - missing/invalid Better Auth session cookie and missing/wrong `x-api-key`
+  - for telemetry ingest endpoints (`/v1/events*`), missing/wrong `x-api-key` when key auth is enabled
 - `400 Invalid event payload` or `400 Invalid batch payload`
   - enum mismatch, missing required field, wrong type
 - `400 alertId must be a positive integer`

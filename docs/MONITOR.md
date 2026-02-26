@@ -142,7 +142,7 @@ Vite dev URL:
 
 - `http://127.0.0.1:5173`
 
-Vite proxy forwards `/v1` API calls to `http://127.0.0.1:7410`.
+Vite proxy forwards `/v1` and `/api/auth` calls to `http://127.0.0.1:7410`.
 
 ### Build + integrated serving
 
@@ -265,10 +265,20 @@ gulag-chief run --config chief.yaml --job sample-quality-check
 
 Base URL default: `http://127.0.0.1:7410`
 
-If `MONITOR_API_KEY` is set:
+Hybrid auth model:
+
+- Better Auth browser login/session is served at `/api/auth/*`
+- `x-api-key` remains supported for machine clients
+
+`/v1` authorization:
 
 - `GET /v1/health` remains open
-- all other `/v1/*` endpoints require `x-api-key`
+- `POST /v1/events` and `POST /v1/events/batch`:
+  - require `x-api-key` when `MONITOR_API_KEY` is set
+  - remain open when `MONITOR_API_KEY` is empty
+- other `/v1/*` endpoints allow:
+  - valid Better Auth session cookie, or
+  - valid `x-api-key`
 
 ### 8.1 Ingest
 
@@ -380,9 +390,29 @@ Monitor environment variables:
 - `MONITOR_PORT` (default `7410`)
 - `MONITOR_DB_PATH` (default `./monitor.sqlite`)
 - `MONITOR_API_KEY` (optional)
+- `MONITOR_AUTH_ENABLED` (default `true`)
+- `MONITOR_AUTH_SECRET` (required when auth enabled)
+- `MONITOR_AUTH_ADMIN_EMAIL` (required when auth enabled)
+- `MONITOR_AUTH_ADMIN_PASSWORD` (required when auth enabled)
 - `MONITOR_RETENTION_DAYS` (default `30`)
 - `MONITOR_EVALUATOR_INTERVAL_SECONDS` (default `15`)
 - `MONITOR_RETENTION_INTERVAL_SECONDS` (default `3600`)
+
+Generate `MONITOR_AUTH_SECRET`:
+
+```bash
+openssl rand -base64 32
+```
+
+Use a random secret, keep it server-only, and keep it stable across restarts to avoid invalidating sessions.
+
+Generate `MONITOR_API_KEY` (if enabled):
+
+```bash
+openssl rand -base64 32
+```
+
+Do not reuse the same value as `MONITOR_AUTH_SECRET`.
 
 ## 12. Runbook
 
@@ -394,6 +424,9 @@ Terminal A:
 cd monitor
 npm install
 npm run db:migrate
+MONITOR_AUTH_SECRET=replace-me \
+MONITOR_AUTH_ADMIN_EMAIL=admin@example.com \
+MONITOR_AUTH_ADMIN_PASSWORD=change-me-please \
 npm run dev
 ```
 

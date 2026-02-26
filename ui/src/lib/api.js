@@ -1,21 +1,3 @@
-const UI_ENV_API_KEY = import.meta.env.VITE_MONITOR_API_KEY?.trim() ?? "";
-function resolveApiKey() {
-    if (UI_ENV_API_KEY) {
-        return UI_ENV_API_KEY;
-    }
-    const storage = typeof globalThis !== "undefined" && "localStorage" in globalThis
-        ? globalThis.localStorage
-        : typeof window !== "undefined"
-            ? window.localStorage
-            : null;
-    if (!storage) {
-        return "";
-    }
-    const fromLocalStorage = (storage.getItem("monitor_api_key") ??
-        storage.getItem("MONITOR_API_KEY") ??
-        "").trim();
-    return fromLocalStorage;
-}
 export function buildQueryString(params) {
     const search = new URLSearchParams();
     for (const [key, rawValue] of Object.entries(params)) {
@@ -50,13 +32,10 @@ async function parseError(response) {
     return `HTTP ${response.status}`;
 }
 export async function fetchJson(path) {
-    const apiKey = resolveApiKey();
     const headers = { Accept: "application/json" };
-    if (apiKey) {
-        headers["x-api-key"] = apiKey;
-    }
     const response = await fetch(path, {
         headers,
+        credentials: "same-origin",
     });
     if (!response.ok) {
         const message = await parseError(response);
@@ -65,18 +44,15 @@ export async function fetchJson(path) {
     return (await response.json());
 }
 export async function postJson(path, body) {
-    const apiKey = resolveApiKey();
     const headers = {
         Accept: "application/json",
         "Content-Type": "application/json",
     };
-    if (apiKey) {
-        headers["x-api-key"] = apiKey;
-    }
     const response = await fetch(path, {
         method: "POST",
         headers,
         body: JSON.stringify(body ?? {}),
+        credentials: "same-origin",
     });
     if (!response.ok) {
         const message = await parseError(response);
