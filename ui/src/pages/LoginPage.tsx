@@ -57,7 +57,9 @@ export function LoginPage() {
       await authClient.getSession();
       navigate(nextPath, { replace: true });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to sign in.");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to sign in.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -67,11 +69,12 @@ export function LoginPage() {
     <section className="auth-shell">
       <article className="card auth-card">
         <header className="auth-card__header">
-          <h2>Monitor Login</h2>
-          <p>Sign in with your local monitor account to view dashboard data.</p>
+          <h2>Gulag Monitor Login</h2>
         </header>
 
-        {errorMessage ? <ErrorBanner title="Sign in failed" message={errorMessage} /> : null}
+        {errorMessage ? (
+          <ErrorBanner title="Sign in failed" message={errorMessage} />
+        ) : null}
 
         <form className="auth-form" onSubmit={onSubmit}>
           <label>
@@ -96,7 +99,11 @@ export function LoginPage() {
             />
           </label>
 
-          <button type="submit" className="button button--primary" disabled={submitting || session.isPending}>
+          <button
+            type="submit"
+            className="button button--primary"
+            disabled={submitting || session.isPending}
+          >
             {submitting ? "Signing In..." : "Sign In"}
           </button>
         </form>
