@@ -18,20 +18,47 @@ function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function toOrigin(raw: string): string | null {
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return null;
+  }
+}
+
 function resolveBaseUrl(config: MonitorConfig): string {
+  const explicitBaseUrl = config.authBaseUrl.trim();
+  if (explicitBaseUrl) {
+    const explicitOrigin = toOrigin(explicitBaseUrl);
+    if (!explicitOrigin) {
+      throw new Error(`MONITOR_AUTH_BASE_URL must be a valid URL. Received: ${config.authBaseUrl}`);
+    }
+    return explicitOrigin;
+  }
+
   const host = config.host === "0.0.0.0" ? "127.0.0.1" : config.host;
   return `http://${host}:${config.port}`;
 }
 
 function resolveTrustedOrigins(config: MonitorConfig): string[] {
   const origins = new Set<string>();
-  const baseUrl = resolveBaseUrl(config);
-  origins.add(baseUrl);
 
-  origins.add(`http://127.0.0.1:${config.port}`);
-  origins.add(`http://localhost:${config.port}`);
-  origins.add("http://127.0.0.1:5173");
-  origins.add("http://localhost:5173");
+  const addOrigin = (value: string) => {
+    const origin = toOrigin(value);
+    if (origin) {
+      origins.add(origin);
+    }
+  };
+
+  addOrigin(resolveBaseUrl(config));
+  for (const configuredOrigin of config.authTrustedOrigins) {
+    addOrigin(configuredOrigin);
+  }
+
+  addOrigin(`http://127.0.0.1:${config.port}`);
+  addOrigin(`http://localhost:${config.port}`);
+  addOrigin("http://127.0.0.1:5173");
+  addOrigin("http://localhost:5173");
 
   return [...origins];
 }
@@ -59,6 +86,9 @@ function createAuthInstance(sqlite: Database.Database, config: MonitorConfig, di
     secret: config.authSecret,
     database: sqlite,
     trustedOrigins: resolveTrustedOrigins(config),
+    advanced: {
+      trustedProxyHeaders: true,
+    },
     emailAndPassword: {
       enabled: true,
       disableSignUp,

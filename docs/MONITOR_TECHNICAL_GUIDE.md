@@ -87,12 +87,14 @@ Config loader: `monitor/src/config.ts`
 
 Environment variables:
 
-- `MONITOR_HOST` (default `127.0.0.1`)
-- `MONITOR_PORT` (default `7410`)
+- `MONITOR_HOST` (default `127.0.0.1`, Render default `0.0.0.0`)
+- `MONITOR_PORT` (default `7410`, falls back to `PORT` when present)
 - `MONITOR_DB_PATH` (default `./monitor.sqlite`)
 - `MONITOR_API_KEY` (default empty)
 - `MONITOR_AUTH_ENABLED` (default `true`)
 - `MONITOR_AUTH_SECRET` (required when auth enabled)
+- `MONITOR_AUTH_BASE_URL` (optional public URL for auth origin checks; defaults to `RENDER_EXTERNAL_URL`/`BETTER_AUTH_URL` when set)
+- `MONITOR_AUTH_TRUSTED_ORIGINS` (optional comma-separated extra origins)
 - `MONITOR_AUTH_ADMIN_EMAIL` (required when auth enabled)
 - `MONITOR_AUTH_ADMIN_PASSWORD` (required when auth enabled)
 - `MONITOR_RETENTION_DAYS` (default `30`)

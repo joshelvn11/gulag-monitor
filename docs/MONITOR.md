@@ -386,12 +386,14 @@ Deduping is keyed to avoid repeated open duplicates.
 
 Monitor environment variables:
 
-- `MONITOR_HOST` (default `127.0.0.1`)
-- `MONITOR_PORT` (default `7410`)
+- `MONITOR_HOST` (default `127.0.0.1`, Render default `0.0.0.0`)
+- `MONITOR_PORT` (default `7410`, falls back to `PORT` when present)
 - `MONITOR_DB_PATH` (default `./monitor.sqlite`)
 - `MONITOR_API_KEY` (optional)
 - `MONITOR_AUTH_ENABLED` (default `true`)
 - `MONITOR_AUTH_SECRET` (required when auth enabled)
+- `MONITOR_AUTH_BASE_URL` (optional public URL for auth origin checks)
+- `MONITOR_AUTH_TRUSTED_ORIGINS` (optional comma-separated extra origins)
 - `MONITOR_AUTH_ADMIN_EMAIL` (required when auth enabled)
 - `MONITOR_AUTH_ADMIN_PASSWORD` (required when auth enabled)
 - `MONITOR_RETENTION_DAYS` (default `30`)
@@ -482,6 +484,11 @@ If monitor uses API key:
 
 - set `monitor.api_key` in `chief.yaml`
 - ensure key matches `MONITOR_API_KEY` in monitor service environment
+
+### `Sign in failed Invalid origin`
+
+- set `MONITOR_AUTH_BASE_URL` to your public URL (for example your Render service URL)
+- if you use additional domains, set `MONITOR_AUTH_TRUSTED_ORIGINS` as comma-separated origins
 
 ## 14. Files of Record
 

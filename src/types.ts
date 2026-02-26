@@ -33,6 +33,8 @@ export type MonitorConfig = {
   apiKey: string;
   authEnabled: boolean;
   authSecret: string;
+  authBaseUrl: string;
+  authTrustedOrigins: string[];
   authAdminEmail: string;
   authAdminPassword: string;
   retentionDays: number;

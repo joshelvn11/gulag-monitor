@@ -234,12 +234,14 @@ export CHIEF_MONITOR_ENDPOINT=http://127.0.0.1:7410
 
 ## 9. Monitor Environment Variables
 
-- `MONITOR_HOST` (default `127.0.0.1`)
-- `MONITOR_PORT` (default `7410`)
+- `MONITOR_HOST` (default `127.0.0.1`, Render default `0.0.0.0`)
+- `MONITOR_PORT` (default `7410`, falls back to `PORT` when present)
 - `MONITOR_DB_PATH` (default `./monitor.sqlite`)
 - `MONITOR_API_KEY` (optional)
 - `MONITOR_AUTH_ENABLED` (default `true`)
 - `MONITOR_AUTH_SECRET` (required when auth enabled)
+- `MONITOR_AUTH_BASE_URL` (optional public URL for auth origin checks)
+- `MONITOR_AUTH_TRUSTED_ORIGINS` (optional comma-separated extra origins)
 - `MONITOR_AUTH_ADMIN_EMAIL` (required when auth enabled)
 - `MONITOR_AUTH_ADMIN_PASSWORD` (required when auth enabled)
 - `MONITOR_RETENTION_DAYS` (default `30`)
@@ -346,6 +348,9 @@ gulag-chief run --config chief/chief.yaml --job sample-etl-pipeline
   - inspect `chief/chief.log` for telemetry warnings
 - Ingest 401 responses:
   - check `MONITOR_API_KEY` matches `monitor.api_key`
+- Sign in failed with `Invalid origin`:
+  - set `MONITOR_AUTH_BASE_URL` to your public HTTPS URL (for example Render service URL)
+  - if you use additional domains, set `MONITOR_AUTH_TRUSTED_ORIGINS` as comma-separated origins
 - UI not loading at `/`:
   - run `npm run ui:build` before `npm run start`
 

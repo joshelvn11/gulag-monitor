@@ -56,6 +56,7 @@ openssl rand -base64 32
 ```
 
 Set it in monitor server environment and keep it stable across restarts.
+For hosted deployments, set `MONITOR_AUTH_BASE_URL` to your public URL to avoid origin mismatches.
 
 For machine ingest auth, you can generate `MONITOR_API_KEY` the same way:
 
@@ -64,6 +65,7 @@ openssl rand -base64 32
 ```
 
 Use a different value than `MONITOR_AUTH_SECRET`.
+If you use multiple UI domains, set `MONITOR_AUTH_TRUSTED_ORIGINS` as comma-separated origins.
 
 Example:
 
