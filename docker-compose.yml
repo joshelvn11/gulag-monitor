@@ -1,0 +1,30 @@
+services:
+  monitor:
+    image: ${MONITOR_IMAGE:-chief-monitor:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chief-monitor
+    restart: unless-stopped
+    ports:
+      - "7410:7410"
+    environment:
+      MONITOR_HOST: 0.0.0.0
+      MONITOR_PORT: 7410
+      MONITOR_DB_PATH: /data/monitor.sqlite
+      MONITOR_RETENTION_DAYS: ${MONITOR_RETENTION_DAYS:-30}
+      MONITOR_EVALUATOR_INTERVAL_SECONDS: ${MONITOR_EVALUATOR_INTERVAL_SECONDS:-15}
+      MONITOR_RETENTION_INTERVAL_SECONDS: ${MONITOR_RETENTION_INTERVAL_SECONDS:-3600}
+      MONITOR_API_KEY: ${MONITOR_API_KEY:-}
+    volumes:
+      - monitor-data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7410/v1/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+volumes:
+  monitor-data:
+    name: monitor-data

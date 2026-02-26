@@ -99,6 +99,50 @@ After build, Express serves the UI at:
 
 If UI build output is missing, monitor starts in API-only mode.
 
+## 6.1 Docker (Local)
+
+Build and run with Docker Compose:
+
+```bash
+cd monitor
+docker compose up --build -d
+```
+
+Open:
+
+- Health: `http://127.0.0.1:7410/v1/health`
+- Dashboard: `http://127.0.0.1:7410/`
+
+Data persistence:
+
+- SQLite lives in Docker volume `monitor-data` at `/data/monitor.sqlite`.
+
+Stop:
+
+```bash
+docker compose down
+```
+
+## 6.2 Docker (Published Image)
+
+Monitor images are published to GitHub Container Registry by CI:
+
+- `ghcr.io/<owner>/chief-monitor:latest` on default branch pushes
+- `ghcr.io/<owner>/chief-monitor:vX.Y.Z` and additional semver tags on version tags
+
+Run a published image:
+
+```bash
+cd monitor
+MONITOR_IMAGE=ghcr.io/<owner>/chief-monitor:latest docker compose up -d
+```
+
+If using API auth:
+
+```bash
+MONITOR_API_KEY=my-secret MONITOR_IMAGE=ghcr.io/<owner>/chief-monitor:latest docker compose up -d
+```
+
 ## 7. Chief Configuration for Monitor
 
 In `chief/chief.yaml`:
