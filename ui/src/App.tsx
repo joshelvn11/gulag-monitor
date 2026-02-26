@@ -11,6 +11,7 @@ import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { OverviewPage } from "./pages/OverviewPage";
+import { SettingsPage } from "./pages/SettingsPage";
 
 function ProtectedRoutes() {
   const location = useLocation();
@@ -25,6 +26,7 @@ function ProtectedRoutes() {
             <Route path="/jobs/:jobName" element={<JobDetailPage />} />
             <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/events" element={<EventsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="/index.html" element={<Navigate to="/" replace />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

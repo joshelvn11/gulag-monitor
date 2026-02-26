@@ -18,6 +18,7 @@ ui/*.tsbuildinfo
 # Local environment files
 .env
 .env.*
+!.env.example
 
 # Log files
 npm-debug.log*

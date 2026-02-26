@@ -9,6 +9,7 @@ const navItems = [
   { to: "/jobs", label: "Jobs" },
   { to: "/alerts", label: "Alerts" },
   { to: "/events", label: "Events" },
+  { to: "/settings", label: "Settings" },
 ];
 
 export function AppShell({ children }: PropsWithChildren) {

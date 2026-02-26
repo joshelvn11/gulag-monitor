@@ -1,6 +1,6 @@
 # Gulag Monitor Guide
 
-This is the single practical guide for running and operating Gulag Monitor (API + web UI + alerts) with Chief.
+This is the single practical guide for running and operating Gulag Monitor (API + web UI + alerts) with `gulag-chief`.
 
 For deep implementation details, data model internals, and backend/UI architecture, see [`docs/MONITOR_TECHNICAL_GUIDE.md`](docs/MONITOR_TECHNICAL_GUIDE.md).
 
@@ -66,6 +66,7 @@ gulag-chief run --config chief/chief.yaml
 - `/jobs/:jobName`: check state, open alerts, and recent events for one job
 - `/alerts`: filter alerts and manually close open alerts
 - `/events`: query raw telemetry with filters
+- `/settings`: global alert email recipient and type settings
 
 ## 5. Local Development Workflow
 
@@ -244,6 +245,9 @@ export CHIEF_MONITOR_ENDPOINT=http://127.0.0.1:7410
 - `MONITOR_AUTH_TRUSTED_ORIGINS` (optional comma-separated extra origins)
 - `MONITOR_AUTH_ADMIN_EMAIL` (required when auth enabled)
 - `MONITOR_AUTH_ADMIN_PASSWORD` (required when auth enabled)
+- `MONITOR_RESEND_API_KEY` (optional, required to send email alerts)
+- `MONITOR_RESEND_FROM_EMAIL` (optional, required to send email alerts)
+- `MONITOR_RESEND_API_BASE` (optional, default `https://api.resend.com`)
 - `MONITOR_RETENTION_DAYS` (default `30`)
 - `MONITOR_EVALUATOR_INTERVAL_SECONDS` (default `15`)
 - `MONITOR_RETENTION_INTERVAL_SECONDS` (default `3600`)
@@ -256,6 +260,8 @@ Example:
 MONITOR_AUTH_SECRET=replace-me \
 MONITOR_AUTH_ADMIN_EMAIL=admin@example.com \
 MONITOR_AUTH_ADMIN_PASSWORD=change-me-please \
+MONITOR_RESEND_API_KEY=re_xxx \
+MONITOR_RESEND_FROM_EMAIL=monitor@example.com \
 MONITOR_API_KEY=my-secret \
 MONITOR_PORT=7410 npm run dev
 ```
@@ -285,6 +291,8 @@ openssl rand -base64 32
 ```
 
 Use the same generation method, but do not reuse the same value as `MONITOR_AUTH_SECRET`.
+
+Alert email recipients are configured in the authenticated web UI at `/settings` and persisted in SQLite (`service_config` key `alert_email_settings`).
 
 ## 10. Authentication Behavior
 
@@ -320,8 +328,24 @@ When `MONITOR_AUTH_ENABLED=true`:
 - `GET /v1/alerts`
 - `GET /v1/events`
 - `POST /v1/alerts/:alertId/close`
+- `GET /v1/settings/alerts/email`
+- `PUT /v1/settings/alerts/email`
+- `POST /v1/settings/alerts/email/test`
 
-## 12. Alert Lifecycle
+## 12. Email Alerts (Resend)
+
+- provider credentials come from env:
+  - `MONITOR_RESEND_API_KEY`
+  - `MONITOR_RESEND_FROM_EMAIL`
+  - optional `MONITOR_RESEND_API_BASE`
+- recipients and enabled alert types are global and managed in `/settings`
+- first-run defaults:
+  - enabled: `FAILURE`, `MISSED`
+  - disabled: `RECOVERY`
+- "Test Email Alerts" always attempts to send to configured recipients, regardless of type toggles
+- send failures are non-blocking and recorded in `alert_deliveries` with channel `email`
+
+## 13. Alert Lifecycle
 
 - `FAILURE`: opens on failed run, closes after later successful run.
 - `MISSED`: opens when a heartbeat is missed beyond grace, closes on next heartbeat.
@@ -329,7 +353,7 @@ When `MONITOR_AUTH_ENABLED=true`:
 
 Any open alert can also be manually closed in the UI or via API.
 
-## 13. End-to-End Smoke Test
+## 14. End-to-End Smoke Test
 
 1. Start monitor (`npm run dev` in `monitor/`).
 2. Run one Chief job:
@@ -342,7 +366,7 @@ gulag-chief run --config chief/chief.yaml --job sample-etl-pipeline
 4. Trigger a failing run and verify a `FAILURE` alert in `/alerts`.
 5. Fix and rerun, then verify recovery and alert closure behavior.
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 - No telemetry in UI:
   - confirm monitor is running and reachable at configured `monitor.endpoint`
@@ -353,10 +377,17 @@ gulag-chief run --config chief/chief.yaml --job sample-etl-pipeline
 - Sign in failed with `Invalid origin`:
   - set `MONITOR_AUTH_BASE_URL` to your public HTTPS URL (for example Render service URL)
   - if you use additional domains, set `MONITOR_AUTH_TRUSTED_ORIGINS` as comma-separated origins
+- Test email returns "Resend email provider is not configured":
+  - set `MONITOR_RESEND_API_KEY` and `MONITOR_RESEND_FROM_EMAIL`
+- No email on alert open:
+  - verify recipients are configured in `/settings`
+  - verify the alert type is enabled in `/settings`
+- Delivery failures:
+  - check `alert_deliveries` rows where `channel='email'` and `status='FAILED'`
 - UI not loading at `/`:
   - run `npm run ui:build` before `npm run start`
 
-## 15. Related Docs
+## 16. Related Docs
 
 - API endpoint reference:
   - [`docs/API_REFERENCE.md`](docs/API_REFERENCE.md)

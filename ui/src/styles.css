@@ -38,6 +38,7 @@ body {
 .json-details pre,
 input,
 select,
+textarea,
 button {
   font-family: "IBM Plex Mono", monospace;
 }
@@ -380,13 +381,18 @@ button {
 }
 
 input,
-select {
+select,
+textarea {
   border: 1px solid var(--stroke);
   border-radius: 8px;
   padding: 0.42rem 0.5rem;
   background: #fff;
   color: var(--text);
   width: 100%;
+}
+
+textarea {
+  resize: vertical;
 }
 
 .table-wrap {
@@ -498,6 +504,80 @@ select {
 
 .error-banner p {
   margin: 0;
+}
+
+.settings-card {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.settings-provider {
+  margin: 0;
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.settings-provider.is-configured {
+  border-color: rgba(44, 122, 93, 0.45);
+  background: rgba(44, 122, 93, 0.1);
+  color: #1f6248;
+}
+
+.settings-provider.is-missing {
+  border-color: rgba(209, 122, 26, 0.4);
+  background: rgba(209, 122, 26, 0.14);
+  color: #8b4f11;
+}
+
+.settings-form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.settings-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  padding: 0.65rem;
+  margin: 0;
+}
+
+.settings-types legend {
+  color: var(--muted);
+  font-size: 0.78rem;
+  padding: 0 0.35rem;
+}
+
+.settings-type-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.settings-type-option input {
+  width: auto;
+}
+
+.settings-notice {
+  border: 1px solid rgba(44, 122, 93, 0.4);
+  background: rgba(44, 122, 93, 0.1);
+  color: #1f6248;
+  border-radius: 10px;
+  padding: 0.7rem;
+  font-size: 0.84rem;
 }
 
 .empty-state {

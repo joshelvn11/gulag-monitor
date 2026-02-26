@@ -53,7 +53,7 @@ flowchart TD
   C --> D["SQLite telemetry_events"]
   D --> E["Check/Alert state updates"]
   E --> F["check_states + alerts tables"]
-  I["Better Auth (/api/auth/*)"] --> H["UI pages (/login, /, /jobs, /alerts, /events)"]
+  I["Better Auth (/api/auth/*)"] --> H["UI pages (/login, /, /jobs, /alerts, /events, /settings)"]
   F --> G["Status APIs (/v1/status/*)"]
   H --> G
 ```
@@ -97,6 +97,9 @@ Environment variables:
 - `MONITOR_AUTH_TRUSTED_ORIGINS` (optional comma-separated extra origins)
 - `MONITOR_AUTH_ADMIN_EMAIL` (required when auth enabled)
 - `MONITOR_AUTH_ADMIN_PASSWORD` (required when auth enabled)
+- `MONITOR_RESEND_API_KEY` (optional, required for email sending)
+- `MONITOR_RESEND_FROM_EMAIL` (optional, required for email sending)
+- `MONITOR_RESEND_API_BASE` (optional, default `https://api.resend.com`)
 - `MONITOR_RETENTION_DAYS` (default `30`)
 - `MONITOR_EVALUATOR_INTERVAL_SECONDS` (default `15`)
 - `MONITOR_RETENTION_INTERVAL_SECONDS` (default `3600`)
@@ -138,11 +141,11 @@ Client creation: `monitor/src/db/client.ts`
 
 `alert_deliveries`
 
-- delivery attempts (currently webhook stub records)
+- delivery attempts for channels such as webhook stub and email (`SENT` / `FAILED`)
 
 `service_config`
 
-- reserved for persisted runtime overrides
+- persisted runtime overrides, including `alert_email_settings`
 
 `user`, `session`, `account`, `verification`
 
@@ -182,6 +185,7 @@ Auth:
 - `GET /v1/status/jobs/:jobName`
 - `GET /v1/alerts`
 - `GET /v1/events`
+- `GET /v1/settings/alerts/email`
 
 Auth rule:
 
@@ -195,6 +199,14 @@ Auth rule:
 - `POST /v1/alerts/:alertId/close`
   - body: optional `{ "reason": "..." }`
   - returns not-found vs updated status payload
+
+### 7.4 Alert Email Settings Endpoints
+
+- `PUT /v1/settings/alerts/email`
+  - body: `{ recipients: string[]; enabledAlertTypes: ("FAILURE"|"MISSED"|"RECOVERY")[] }`
+- `POST /v1/settings/alerts/email/test`
+  - sends test email to configured recipients
+  - returns `{ attempted, sent, failed, message }`
 
 ## 8. Ingestion and Normalization Pipeline
 
@@ -286,6 +298,9 @@ Alert opening helper: `openAlert(...)`
 - dedupes by `(dedupeKey, status=OPEN)`
 - inserts open alert if not already open
 - inserts `alert_deliveries` webhook stub row
+- asynchronously attempts email delivery for enabled alert types
+  - uses `service_config` key `alert_email_settings`
+  - never blocks ingest or check evaluation on email send failures
 
 Alert closing helper: `closeOpenAlerts(jobName, type)`
 
@@ -377,11 +392,13 @@ App root: `monitor/ui/src/App.tsx`
 
 Routing:
 
+- `/login` -> `LoginPage`
 - `/` -> `OverviewPage`
 - `/jobs` -> `JobsPage`
 - `/jobs/:jobName` -> `JobDetailPage`
 - `/alerts` -> `AlertsPage`
 - `/events` -> `EventsPage`
+- `/settings` -> `SettingsPage`
 
 Data fetching:
 
@@ -411,12 +428,15 @@ Key response models:
 - `AlertsResponse`
 - `EventsResponse`
 - `CloseAlertResponse`
+- `AlertEmailSettingsResponse`
+- `AlertEmailTestResponse`
 
 API client source: `monitor/ui/src/lib/api.ts`
 
 - `getSummary`, `getJobsStatus`, `getJobDetails`
 - `getAlerts`, `getEvents`
 - `closeAlert`
+- `getAlertEmailSettings`, `updateAlertEmailSettings`, `sendTestAlertEmail`
 
 Session behavior:
 
@@ -485,14 +505,14 @@ Common extensions:
   - add new `alertType` taxonomy and UI filters
 
 2. External notifications:
-  - replace delivery stub with real webhook/email/Slack sender
-  - update `alert_deliveries` with real attempts/results
+  - add retry queue or additional channels (Slack/PagerDuty)
+  - keep `alert_deliveries` as source of attempt outcomes
 
 3. Multi-tenant support:
   - add tenant key on events/checks/alerts and query filters
 
 4. Authentication:
-  - add middleware for `/v1/status/*`, `/v1/alerts`, `/v1/events`, and close endpoint
+  - add role-based authorization for settings mutation or admin-only controls
 
 5. Time-series analytics:
   - add rollup tables/materialized views for trend charts

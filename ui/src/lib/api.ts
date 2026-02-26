@@ -1,12 +1,15 @@
 import type {
+  AlertEmailSettingsResponse,
+  AlertEmailTestResponse,
   AlertsQueryParams,
-  CloseAlertResponse,
   AlertsResponse,
+  CloseAlertResponse,
   EventsQueryParams,
   EventsResponse,
   JobDetailsResponse,
   JobsStatusResponse,
   SummaryResponse,
+  UpdateAlertEmailSettingsPayload,
 } from "./types";
 
 export type QueryValue = string | number | boolean | null | undefined;
@@ -77,6 +80,24 @@ export async function postJson<T>(path: string, body: unknown): Promise<T> {
   return (await response.json()) as T;
 }
 
+export async function putJson<T>(path: string, body: unknown): Promise<T> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  const response = await fetch(path, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify(body ?? {}),
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    const message = await parseError(response);
+    throw new Error(message);
+  }
+  return (await response.json()) as T;
+}
+
 export function getSummary(): Promise<SummaryResponse> {
   return fetchJson<SummaryResponse>("/v1/status/summary");
 }
@@ -117,4 +138,18 @@ export function getEvents(params: EventsQueryParams = {}): Promise<EventsRespons
 
 export function closeAlert(alertId: number, reason = "manual-ui"): Promise<CloseAlertResponse> {
   return postJson<CloseAlertResponse>(`/v1/alerts/${encodeURIComponent(String(alertId))}/close`, { reason });
+}
+
+export function getAlertEmailSettings(): Promise<AlertEmailSettingsResponse> {
+  return fetchJson<AlertEmailSettingsResponse>("/v1/settings/alerts/email");
+}
+
+export function updateAlertEmailSettings(
+  payload: UpdateAlertEmailSettingsPayload
+): Promise<AlertEmailSettingsResponse> {
+  return putJson<AlertEmailSettingsResponse>("/v1/settings/alerts/email", payload);
+}
+
+export function sendTestAlertEmail(): Promise<AlertEmailTestResponse> {
+  return postJson<AlertEmailTestResponse>("/v1/settings/alerts/email/test", {});
 }

@@ -37,6 +37,9 @@ export type MonitorConfig = {
   authTrustedOrigins: string[];
   authAdminEmail: string;
   authAdminPassword: string;
+  resendApiKey: string;
+  resendFromEmail: string;
+  resendApiBase: string;
   retentionDays: number;
   evaluatorIntervalSeconds: number;
   retentionIntervalSeconds: number;

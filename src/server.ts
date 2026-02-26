@@ -34,6 +34,10 @@ const eventBatchSchema = z.union([
 const closeAlertSchema = z.object({
   reason: z.string().trim().min(1).max(200).optional(),
 });
+const alertEmailSettingsSchema = z.object({
+  recipients: z.array(z.string().trim().email()).max(50),
+  enabledAlertTypes: z.array(z.enum(["FAILURE", "MISSED", "RECOVERY"])),
+});
 
 function coercePositiveInt(raw: unknown, fallback: number, max: number): number {
   if (typeof raw !== "string") {
@@ -63,6 +67,18 @@ function isTelemetryIngestRoute(req: Request): boolean {
     return false;
   }
   return req.path === "/events" || req.path === "/events/batch";
+}
+
+function extractSessionEmail(session: unknown): string | null {
+  if (!session || typeof session !== "object") {
+    return null;
+  }
+  const record = session as { user?: unknown };
+  if (!record.user || typeof record.user !== "object") {
+    return null;
+  }
+  const user = record.user as { email?: unknown };
+  return typeof user.email === "string" && user.email.trim() ? user.email.trim().toLowerCase() : null;
 }
 
 function resolveUiDistPath(): string {
@@ -233,6 +249,66 @@ async function main(): Promise<void> {
     });
 
     res.json({ events: rows, limit, offset });
+  });
+
+  app.get("/v1/settings/alerts/email", (_req: Request, res: Response) => {
+    res.json(service.getAlertEmailSettings());
+  });
+
+  app.put("/v1/settings/alerts/email", (req: Request, res: Response) => {
+    const parsed = alertEmailSettingsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid email settings payload", details: parsed.error.flatten() });
+    }
+
+    try {
+      const updated = service.saveAlertEmailSettings(parsed.data);
+      return res.json(updated);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to save email settings.";
+      return res.status(400).json({ error: message });
+    }
+  });
+
+  app.post("/v1/settings/alerts/email/test", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const settings = service.getAlertEmailSettings();
+      if (!settings.providerConfigured) {
+        return res.status(400).json({
+          attempted: 0,
+          sent: 0,
+          failed: 0,
+          message: "Resend email provider is not configured.",
+        });
+      }
+
+      if (settings.recipients.length === 0) {
+        return res.status(400).json({
+          attempted: 0,
+          sent: 0,
+          failed: 0,
+          message: "No alert email recipients configured.",
+        });
+      }
+
+      const session = auth ? await auth.getSessionFromRequest(req) : null;
+      const requestedByEmail = extractSessionEmail(session);
+
+      try {
+        const result = await service.sendTestAlertEmail(requestedByEmail);
+        return res.json(result);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to send test email.";
+        return res.status(502).json({
+          attempted: settings.recipients.length,
+          sent: 0,
+          failed: settings.recipients.length,
+          message,
+        });
+      }
+    } catch (error) {
+      return next(error);
+    }
   });
 
   const uiDistPath = resolveUiDistPath();

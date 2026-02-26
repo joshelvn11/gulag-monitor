@@ -60,6 +60,23 @@ export async function postJson(path, body) {
     }
     return (await response.json());
 }
+export async function putJson(path, body) {
+    const headers = {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+    };
+    const response = await fetch(path, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(body ?? {}),
+        credentials: "same-origin",
+    });
+    if (!response.ok) {
+        const message = await parseError(response);
+        throw new Error(message);
+    }
+    return (await response.json());
+}
 export function getSummary() {
     return fetchJson("/v1/status/summary");
 }
@@ -95,4 +112,13 @@ export function getEvents(params = {}) {
 }
 export function closeAlert(alertId, reason = "manual-ui") {
     return postJson(`/v1/alerts/${encodeURIComponent(String(alertId))}/close`, { reason });
+}
+export function getAlertEmailSettings() {
+    return fetchJson("/v1/settings/alerts/email");
+}
+export function updateAlertEmailSettings(payload) {
+    return putJson("/v1/settings/alerts/email", payload);
+}
+export function sendTestAlertEmail() {
+    return postJson("/v1/settings/alerts/email/test", {});
 }

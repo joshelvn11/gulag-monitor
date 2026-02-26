@@ -1,13 +1,40 @@
 import { and, desc, eq, lt, sql } from "drizzle-orm";
+import { z } from "zod";
 
 import { MonitorConfig } from "../types.js";
-import { alertDeliveries, alerts, checkStates, telemetryEvents } from "../db/schema.js";
+import { alertDeliveries, alerts, checkStates, serviceConfig, telemetryEvents } from "../db/schema.js";
+import { EmailSendError, EmailService } from "./emailService.js";
 
 const HEARTBEAT_EVENT_TYPES = new Set(["job.started", "job.completed", "job.failed"]);
 const CHIEF_HEARTBEAT_EVENT_TYPE = "chief.heartbeat";
 const DEFAULT_CHIEF_OFFLINE_AFTER_SECONDS = 45;
 const MIN_CHIEF_OFFLINE_AFTER_SECONDS = 5;
 const DEFAULT_RECOVERY_AUTO_CLOSE_SECONDS = 900;
+const EMAIL_SETTINGS_KEY = "alert_email_settings";
+const MAX_ALERT_EMAIL_RECIPIENTS = 50;
+
+const ALERT_EMAIL_TYPE_VALUES = ["FAILURE", "MISSED", "RECOVERY"] as const;
+const ALERT_EMAIL_TYPE_SET = new Set<string>(ALERT_EMAIL_TYPE_VALUES);
+
+const alertEmailRecipientSchema = z.string().trim().toLowerCase().email();
+
+export type AlertEmailType = (typeof ALERT_EMAIL_TYPE_VALUES)[number];
+
+export type AlertEmailSettings = {
+  recipients: string[];
+  enabledAlertTypes: AlertEmailType[];
+};
+
+export type AlertEmailSettingsResponse = AlertEmailSettings & {
+  providerConfigured: boolean;
+};
+
+export type AlertEmailTestResult = {
+  attempted: number;
+  sent: number;
+  failed: number;
+  message: string;
+};
 
 type EventPayload = {
   sourceType: "chief" | "worker" | "monitor";
@@ -97,9 +124,42 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function normalizeAlertEmailType(value: unknown): AlertEmailType | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toUpperCase();
+  if (!ALERT_EMAIL_TYPE_SET.has(normalized)) {
+    return null;
+  }
+  return normalized as AlertEmailType;
+}
+
+function normalizeAlertEmailTypes(rawValues: unknown[]): AlertEmailType[] {
+  const seen = new Set<string>();
+  const normalized: AlertEmailType[] = [];
+  for (const raw of rawValues) {
+    const parsed = normalizeAlertEmailType(raw);
+    if (!parsed || seen.has(parsed)) {
+      continue;
+    }
+    seen.add(parsed);
+    normalized.push(parsed);
+  }
+  return normalized;
+}
+
+function formatErrorText(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
 export class MonitorService {
   private db: any;
   private config: MonitorConfig;
+  private emailService: EmailService;
 
   constructor(
     db: any,
@@ -107,6 +167,7 @@ export class MonitorService {
   ) {
     this.db = db;
     this.config = config;
+    this.emailService = new EmailService(config);
   }
 
   normalizeEvents(rawEvents: unknown[]): EventPayload[] {
@@ -265,6 +326,235 @@ export class MonitorService {
     return result?.changes ?? 0;
   }
 
+  isEmailProviderConfigured(): boolean {
+    return this.emailService.isConfigured();
+  }
+
+  getDefaultAlertEmailSettings(): AlertEmailSettings {
+    return {
+      recipients: [],
+      enabledAlertTypes: ["FAILURE", "MISSED"],
+    };
+  }
+
+  private sanitizeRecipients(rawValues: unknown[], strict: boolean): string[] {
+    const deduped = new Set<string>();
+    for (const raw of rawValues) {
+      if (typeof raw !== "string") {
+        if (strict) {
+          throw new Error("Recipients must be strings.");
+        }
+        continue;
+      }
+      const trimmed = raw.trim().toLowerCase();
+      if (!trimmed) {
+        continue;
+      }
+      const parsed = alertEmailRecipientSchema.safeParse(trimmed);
+      if (!parsed.success) {
+        if (strict) {
+          throw new Error(`Invalid recipient email: ${trimmed}`);
+        }
+        continue;
+      }
+      deduped.add(parsed.data);
+      if (deduped.size > MAX_ALERT_EMAIL_RECIPIENTS && strict) {
+        throw new Error(`Maximum recipients exceeded (${MAX_ALERT_EMAIL_RECIPIENTS}).`);
+      }
+    }
+    return [...deduped].slice(0, MAX_ALERT_EMAIL_RECIPIENTS);
+  }
+
+  private parseAlertEmailSettingsValue(valueJson: string | null): AlertEmailSettings {
+    const defaults = this.getDefaultAlertEmailSettings();
+    const parsed = parseJson<Record<string, unknown>>(valueJson, {});
+
+    const recipientsRaw = Array.isArray(parsed.recipients) ? parsed.recipients : [];
+    const recipients = this.sanitizeRecipients(recipientsRaw, false);
+
+    const enabledRaw = parsed.enabledAlertTypes;
+    const enabledAlertTypes = Array.isArray(enabledRaw)
+      ? normalizeAlertEmailTypes(enabledRaw)
+      : defaults.enabledAlertTypes;
+
+    return {
+      recipients,
+      enabledAlertTypes,
+    };
+  }
+
+  private readAlertEmailSettings(): AlertEmailSettings {
+    const row = this.db
+      .select({ valueJson: serviceConfig.valueJson })
+      .from(serviceConfig)
+      .where(eq(serviceConfig.key, EMAIL_SETTINGS_KEY))
+      .limit(1)
+      .get() as { valueJson: string } | undefined;
+
+    if (!row) {
+      return this.getDefaultAlertEmailSettings();
+    }
+
+    return this.parseAlertEmailSettingsValue(row.valueJson);
+  }
+
+  getAlertEmailSettings(): AlertEmailSettingsResponse {
+    const settings = this.readAlertEmailSettings();
+    return {
+      ...settings,
+      providerConfigured: this.isEmailProviderConfigured(),
+    };
+  }
+
+  saveAlertEmailSettings(input: AlertEmailSettings): AlertEmailSettingsResponse {
+    const recipientsInput = Array.isArray(input.recipients) ? input.recipients : [];
+    const enabledInput = Array.isArray(input.enabledAlertTypes) ? input.enabledAlertTypes : [];
+
+    const recipients = this.sanitizeRecipients(recipientsInput, true);
+
+    const normalizedEnabled = normalizeAlertEmailTypes(enabledInput);
+    for (const raw of enabledInput) {
+      if (!normalizeAlertEmailType(raw)) {
+        throw new Error(`Invalid alert type: ${String(raw)}`);
+      }
+    }
+
+    const settings: AlertEmailSettings = {
+      recipients,
+      enabledAlertTypes: normalizedEnabled,
+    };
+
+    const updatedAt = nowIso();
+    this.db
+      .insert(serviceConfig)
+      .values({
+        key: EMAIL_SETTINGS_KEY,
+        valueJson: JSON.stringify(settings),
+        updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: serviceConfig.key,
+        set: {
+          valueJson: JSON.stringify(settings),
+          updatedAt,
+        },
+      })
+      .run();
+
+    return {
+      ...settings,
+      providerConfigured: this.isEmailProviderConfigured(),
+    };
+  }
+
+  async sendTestAlertEmail(requestedByEmail: string | null): Promise<AlertEmailTestResult> {
+    if (!this.isEmailProviderConfigured()) {
+      throw new Error("Resend email provider is not configured.");
+    }
+
+    const settings = this.readAlertEmailSettings();
+    if (settings.recipients.length === 0) {
+      throw new Error("No alert email recipients configured.");
+    }
+
+    const requestedBy = requestedByEmail?.trim() || "unknown";
+    const now = nowIso();
+
+    await this.emailService.sendEmail({
+      to: settings.recipients,
+      subject: "[ALERT] Test email alert",
+      text: [
+        "This is a test alert email from Gulag Monitor.",
+        "",
+        `Requested by: ${requestedBy}`,
+        `Sent at: ${now}`,
+        `Enabled alert types: ${settings.enabledAlertTypes.join(", ") || "(none)"}`,
+      ].join("\n"),
+    });
+
+    return {
+      attempted: settings.recipients.length,
+      sent: settings.recipients.length,
+      failed: 0,
+      message: "Test email sent.",
+    };
+  }
+
+  private async dispatchAlertEmail(
+    alertId: number,
+    params: {
+      jobName: string;
+      alertType: "FAILURE" | "MISSED" | "RECOVERY";
+      severity: "WARN" | "ERROR" | "CRITICAL" | "INFO";
+      title: string;
+      details: Record<string, unknown>;
+      openedAt: string;
+    }
+  ): Promise<void> {
+    const settings = this.readAlertEmailSettings();
+    if (!settings.enabledAlertTypes.includes(params.alertType)) {
+      return;
+    }
+    if (settings.recipients.length === 0) {
+      return;
+    }
+
+    const attemptedAt = nowIso();
+    if (!this.isEmailProviderConfigured()) {
+      this.db.insert(alertDeliveries).values({
+        alertId,
+        channel: "email",
+        attemptedAt,
+        status: "FAILED",
+        responseCode: null,
+        errorText: "EMAIL_NOT_CONFIGURED",
+      }).run();
+      // eslint-disable-next-line no-console
+      console.warn("Alert email skipped because provider is not configured", { alertId });
+      return;
+    }
+
+    try {
+      const result = await this.emailService.sendEmail({
+        to: settings.recipients,
+        subject: `[ALERT] ${params.alertType} ${params.jobName}`,
+        text: [
+          `Alert Type: ${params.alertType}`,
+          `Severity: ${params.severity}`,
+          `Job: ${params.jobName}`,
+          `Title: ${params.title}`,
+          `Opened At: ${params.openedAt}`,
+          "",
+          "Details:",
+          JSON.stringify(params.details, null, 2),
+        ].join("\n"),
+      });
+
+      this.db.insert(alertDeliveries).values({
+        alertId,
+        channel: "email",
+        attemptedAt,
+        status: "SENT",
+        responseCode: result.responseCode,
+        errorText: null,
+      }).run();
+    } catch (error) {
+      this.db.insert(alertDeliveries).values({
+        alertId,
+        channel: "email",
+        attemptedAt,
+        status: "FAILED",
+        responseCode: error instanceof EmailSendError ? error.responseCode : null,
+        errorText: formatErrorText(error),
+      }).run();
+      // eslint-disable-next-line no-console
+      console.warn("Alert email delivery failed", {
+        alertId,
+        error: formatErrorText(error),
+      });
+    }
+  }
+
   private openAlert(params: {
     jobName: string;
     alertType: "FAILURE" | "MISSED" | "RECOVERY";
@@ -317,6 +607,21 @@ export class MonitorService {
         responseCode: null,
         errorText: "Webhook integration not configured in v1.",
       }).run();
+
+      void this.dispatchAlertEmail(alertId, {
+        jobName: params.jobName,
+        alertType: params.alertType,
+        severity: params.severity,
+        title: params.title,
+        details: params.details,
+        openedAt: now,
+      }).catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error("Failed to dispatch alert email", {
+          alertId,
+          error: formatErrorText(error),
+        });
+      });
     }
   }
 

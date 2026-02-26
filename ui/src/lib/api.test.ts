@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildQueryString, closeAlert, fetchJson } from "./api";
+import { buildQueryString, closeAlert, fetchJson, sendTestAlertEmail, updateAlertEmailSettings } from "./api";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -72,6 +72,53 @@ describe("buildQueryString", () => {
         headers: expect.objectContaining({
           Accept: "application/json",
         }),
+      })
+    );
+  });
+
+  it("puts email alert settings with same-origin credentials", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        recipients: ["ops@example.com"],
+        enabledAlertTypes: ["FAILURE"],
+        providerConfigured: true,
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateAlertEmailSettings({
+      recipients: ["ops@example.com"],
+      enabledAlertTypes: ["FAILURE"],
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/settings/alerts/email",
+      expect.objectContaining({
+        method: "PUT",
+        credentials: "same-origin",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+      })
+    );
+  });
+
+  it("posts test email endpoint", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ attempted: 1, sent: 1, failed: 0, message: "Test email sent." }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await sendTestAlertEmail();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/settings/alerts/email/test",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "same-origin",
       })
     );
   });

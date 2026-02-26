@@ -125,3 +125,23 @@ export type EventsQueryParams = {
   limit?: number;
   offset?: number;
 };
+
+export type AlertEmailType = "FAILURE" | "MISSED" | "RECOVERY";
+
+export type AlertEmailSettingsResponse = {
+  recipients: string[];
+  enabledAlertTypes: AlertEmailType[];
+  providerConfigured: boolean;
+};
+
+export type UpdateAlertEmailSettingsPayload = {
+  recipients: string[];
+  enabledAlertTypes: AlertEmailType[];
+};
+
+export type AlertEmailTestResponse = {
+  attempted: number;
+  sent: number;
+  failed: number;
+  message: string;
+};

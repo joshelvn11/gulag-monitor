@@ -120,6 +120,7 @@ UI route map:
 - `/jobs/:jobName` job detail
 - `/alerts` alerts explorer
 - `/events` events explorer
+- `/settings` alert email settings
 
 ### Local UI development (two terminals)
 
@@ -316,6 +317,9 @@ curl -s -X POST http://127.0.0.1:7410/v1/events \
 - `GET /v1/alerts`
 - `GET /v1/events`
 - `POST /v1/alerts/:alertId/close`
+- `GET /v1/settings/alerts/email`
+- `PUT /v1/settings/alerts/email`
+- `POST /v1/settings/alerts/email/test`
 
 Filters:
 
@@ -329,6 +333,7 @@ curl -s 'http://127.0.0.1:7410/v1/status/summary' -H 'x-api-key: YOUR_KEY'
 curl -s 'http://127.0.0.1:7410/v1/events?jobName=sample-etl-pipeline&limit=50' -H 'x-api-key: YOUR_KEY'
 curl -s 'http://127.0.0.1:7410/v1/alerts?status=OPEN' -H 'x-api-key: YOUR_KEY'
 curl -s -X POST http://127.0.0.1:7410/v1/alerts/1/close -H 'x-api-key: YOUR_KEY' -H 'Content-Type: application/json' -d '{"reason":"manual"}'
+curl -s 'http://127.0.0.1:7410/v1/settings/alerts/email' -H 'x-api-key: YOUR_KEY'
 ```
 
 ## 9. SQLite Data Model
@@ -396,6 +401,9 @@ Monitor environment variables:
 - `MONITOR_AUTH_TRUSTED_ORIGINS` (optional comma-separated extra origins)
 - `MONITOR_AUTH_ADMIN_EMAIL` (required when auth enabled)
 - `MONITOR_AUTH_ADMIN_PASSWORD` (required when auth enabled)
+- `MONITOR_RESEND_API_KEY` (optional, required for email sending)
+- `MONITOR_RESEND_FROM_EMAIL` (optional, required for email sending)
+- `MONITOR_RESEND_API_BASE` (optional, default `https://api.resend.com`)
 - `MONITOR_RETENTION_DAYS` (default `30`)
 - `MONITOR_EVALUATOR_INTERVAL_SECONDS` (default `15`)
 - `MONITOR_RETENTION_INTERVAL_SECONDS` (default `3600`)
@@ -415,6 +423,8 @@ openssl rand -base64 32
 ```
 
 Do not reuse the same value as `MONITOR_AUTH_SECRET`.
+
+Email recipients are not env-configured. They are global DB-backed settings managed in the authenticated UI at `/settings`.
 
 ## 12. Runbook
 
@@ -489,6 +499,21 @@ If monitor uses API key:
 
 - set `MONITOR_AUTH_BASE_URL` to your public URL (for example your Render service URL)
 - if you use additional domains, set `MONITOR_AUTH_TRUSTED_ORIGINS` as comma-separated origins
+
+### Test email says provider not configured
+
+- set `MONITOR_RESEND_API_KEY`
+- set `MONITOR_RESEND_FROM_EMAIL`
+
+### Alerts open but no email sent
+
+- add recipients in `/settings`
+- enable the relevant alert type (`FAILURE`, `MISSED`, `RECOVERY`) in `/settings`
+
+### Email delivery failures
+
+- inspect `alert_deliveries` where `channel='email'`
+- failed sends are non-blocking and recorded with `status='FAILED'`
 
 ## 14. Files of Record
 

@@ -49,6 +49,9 @@ Monitor uses hybrid auth:
   - allow a valid Better Auth session cookie, or
   - allow a valid `x-api-key`
 
+Email alert settings endpoints (`/v1/settings/alerts/email*`) follow the same session-or-key rule.
+Recipients are configured through these endpoints (and the web UI), not environment variables.
+
 For Better Auth setup, generate and set `MONITOR_AUTH_SECRET`:
 
 ```bash
@@ -636,6 +639,146 @@ curl -s -X POST http://127.0.0.1:7410/v1/alerts/88/close \
   -d '{"reason":"resolved by on-call"}'
 ```
 
+### 5.10 GET `/v1/settings/alerts/email`
+
+Purpose:
+
+- return global email alert settings and provider status
+
+Auth:
+
+- requires Better Auth session cookie or valid `x-api-key`
+
+Response `200` example:
+
+```json
+{
+  "recipients": [
+    "ops@example.com",
+    "oncall@example.com"
+  ],
+  "enabledAlertTypes": [
+    "FAILURE",
+    "MISSED"
+  ],
+  "providerConfigured": true
+}
+```
+
+Defaults on first run (no persisted settings row):
+
+- `recipients: []`
+- `enabledAlertTypes: ["FAILURE", "MISSED"]`
+- `providerConfigured` reflects env config
+
+### 5.11 PUT `/v1/settings/alerts/email`
+
+Purpose:
+
+- replace global email alert settings
+
+Auth:
+
+- requires Better Auth session cookie or valid `x-api-key`
+
+Body:
+
+```json
+{
+  "recipients": [
+    "ops@example.com",
+    "oncall@example.com"
+  ],
+  "enabledAlertTypes": [
+    "FAILURE",
+    "MISSED"
+  ]
+}
+```
+
+Validation:
+
+- `recipients` max length: 50
+- recipients are normalized to trimmed lowercase and deduped
+- invalid emails return `400`
+- `enabledAlertTypes` values must be `FAILURE | MISSED | RECOVERY`
+
+Success `200`:
+
+- same shape as `GET /v1/settings/alerts/email`
+
+Validation error `400` example:
+
+```json
+{
+  "error": "Invalid email settings payload",
+  "details": {
+    "fieldErrors": {
+      "recipients": ["Invalid email"]
+    },
+    "formErrors": []
+  }
+}
+```
+
+### 5.12 POST `/v1/settings/alerts/email/test`
+
+Purpose:
+
+- send a test email to configured recipients
+
+Auth:
+
+- requires Better Auth session cookie or valid `x-api-key`
+
+Body:
+
+- `{}` (or empty JSON object)
+
+Success `200` example:
+
+```json
+{
+  "attempted": 2,
+  "sent": 2,
+  "failed": 0,
+  "message": "Test email sent."
+}
+```
+
+Not configured `400` example:
+
+```json
+{
+  "attempted": 0,
+  "sent": 0,
+  "failed": 0,
+  "message": "Resend email provider is not configured."
+}
+```
+
+No recipients `400` example:
+
+```json
+{
+  "attempted": 0,
+  "sent": 0,
+  "failed": 0,
+  "message": "No alert email recipients configured."
+}
+```
+
+Provider/send error `502` example:
+
+```json
+{
+  "attempted": 2,
+  "sent": 0,
+  "failed": 2,
+  "message": "RESEND_REQUEST_FAILED_401"
+}
+```
+
 ## 6. Operational Semantics You Should Know
 
 ### 6.1 Check and Alert Lifecycle
@@ -748,6 +891,12 @@ console.log(summary);
   - close endpoint id does not exist
 - `404 Job not found in check state`
   - no check state has been created for that job yet
+- `400 Resend email provider is not configured`
+  - missing `MONITOR_RESEND_API_KEY` or `MONITOR_RESEND_FROM_EMAIL`
+- `400 No alert email recipients configured`
+  - configure recipients via `/v1/settings/alerts/email` or UI `/settings`
+- `502` from test email endpoint
+  - Resend request failed; inspect message and `alert_deliveries` for send failures
 
 ## 9. See Also
 
