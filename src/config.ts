@@ -1,5 +1,28 @@
 import { MonitorConfig } from "./types.js";
 
+let didAttemptEnvFileLoad = false;
+
+function loadEnvFileIfAvailable(): void {
+  if (didAttemptEnvFileLoad) {
+    return;
+  }
+  didAttemptEnvFileLoad = true;
+
+  const loadEnvFile = (process as NodeJS.Process & { loadEnvFile?: (path?: string) => void }).loadEnvFile;
+  if (typeof loadEnvFile !== "function") {
+    return;
+  }
+
+  try {
+    loadEnvFile();
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code !== "ENOENT") {
+      throw error;
+    }
+  }
+}
+
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) {
@@ -36,6 +59,8 @@ function envCsv(name: string): string[] {
 }
 
 export function loadConfig(): MonitorConfig {
+  loadEnvFileIfAvailable();
+
   const isRender = Boolean(process.env.RENDER);
   const defaultHost = isRender ? "0.0.0.0" : "127.0.0.1";
   const defaultPort = envInt("PORT", 7410);

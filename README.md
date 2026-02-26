@@ -248,6 +248,8 @@ export CHIEF_MONITOR_ENDPOINT=http://127.0.0.1:7410
 - `MONITOR_EVALUATOR_INTERVAL_SECONDS` (default `15`)
 - `MONITOR_RETENTION_INTERVAL_SECONDS` (default `3600`)
 
+For local commands (`npm run dev`, `npm run db:migrate`), monitor automatically loads variables from `.env` in the current working directory when the file exists.
+
 Example:
 
 ```bash
